@@ -1,0 +1,10 @@
+#!/bin/bash
+
+gcc $1 -g -o cshell.out 
+
+if [ $? = "0" ]
+then
+	./cshell.out 
+#	rm ./cshell.out
+fi
+
