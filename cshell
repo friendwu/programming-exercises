@@ -4,7 +4,8 @@ gcc $1 -g -o cshell.out
 
 if [ $? = "0" ]
 then
-	./cshell.out 
+	shift 2
+	./cshell.out $@
 #	rm ./cshell.out
 fi
 
