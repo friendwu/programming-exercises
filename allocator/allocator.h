@@ -1,12 +1,14 @@
 #ifndef ALLOCATOR_H
 #define ALLOCATOR_H
 
+#include <stdio.h>
 struct _Allocator;
 typedef struct _Allocator Allocator;
 
 typedef struct _Adump_t
 {
-	
+	size_t alloc_num;
+	size_t free_num;
 }Adump_t;
 
 Allocator* allocator_create(size_t init_size);
