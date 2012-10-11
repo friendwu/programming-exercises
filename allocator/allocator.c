@@ -6,7 +6,7 @@
 //size of header + footer.
 #define OVERHEAD WORD_SIZE * 2 
 
-#define PACK(size, avail) (size & avail) 
+#define PACK(size, alloc) (size & alloc) 
 #define PUT(p, val) (*(size_t*)(p) = val)
 #define GET(p) (*(size_t*)(p))
 
@@ -14,12 +14,14 @@
 #define GET_SIZE(p) (GET(p) & ~0x07) 
 #define GET_ALLOC(p) (GET(p) & 0x01)
 
-#define PREV_BLOCK(p) ((char* )p - WORD_SIZE)
+#define PREV_BLOCK(p) (p - GET_SIZE((char* )p-WORD_SIZE) -OVERHEAD)
 #define NEXT_BLOCK(p) ((char* )p + GET_SIZE(p) + OVERHEAD) 
 #define FOOTER(p) ((char* )p + GET_SIZE(p) + WORD_SIZE)
 
-#define HDRP(bp) ((char* bp) - WORD_SIZE)
-#define FTRP(bp) ((char* )bp + GET_SIZE(HDRP(bp)))
+#define DP_TO_HDRP(dp) ((char* dp) - WORD_SIZE)
+#define DP_TO_FTRP(dp) ((char* )dp + GET_SIZE(HDRP(dp)))
+#define FTRP_TO_DP(p) ((char* p) - GET_SIZE(p) - WORD_SIZE)
+#define HDRP_TO_DP(p) ((char* p) + WORD_SIZE)
 
 
 typedef struct _Allocator
@@ -30,9 +32,9 @@ typedef struct _Allocator
 
 static void* _allocator_extend_heap(allocator* thiz, size_t size)
 {
-	if(size < WORD_SIZE) alloc_size = DWORD_SIZE;
-	else if(size % WORD_SIZE == 0) alloc_size = size; 
-	else alloc_size = (size/WORD_SIZE + 1) * DWORD_SIZE;
+	if(size < DWORD_SIZE) alloc_size = DWORD_SIZE;
+	else if(size % DWORD_SIZE == 0) alloc_size = size; 
+	else alloc_size = (size/DWORD_SIZE + 1) * DWORD_SIZE;
 
 	size_t old_size = thiz->size;
 
@@ -41,7 +43,9 @@ static void* _allocator_extend_heap(allocator* thiz, size_t size)
 
 	thiz->size = size;
 
+	//new block header init.
 	PUT((char* )(thiz->data) + old_size, PACK(size-old_size, 0));
+	//new block footer init.
 	PUT((char* )(thiz->data) + size - WORD_SIZE, PACK(size-old_size, 0));
 
 	return *((char* )(thiz->data) + old_size);
@@ -49,31 +53,30 @@ static void* _allocator_extend_heap(allocator* thiz, size_t size)
 
 static void _allocator_try_merge(allocator* thiz, void* p)
 {
-	size_t prev_alloc;
-	size_t next_alloc;
+	size_t prev_alloc = GET_ALLOC(PREV_BLOCK(p));
+	size_t next_alloc = GET_ALLOC(NEXT_BLOCK(p));
 
-	size_t prev_size = GET_SIZE(p-1);
+	size_t prev_size = GET_SIZE(PREV_BLOCK(p));
 	size_t next_size = GET_SIZE(NEXT_BLOCK(p));
 	size_t cur_size = GET_SIZE(p);
-
 
 	if(prev_alloc && !next_alloc)
 	{
 		//merge with next block.
-		PUT(p, PACK(cur_size+next_size+WORD_SIZE*2, 0));
-		PUT(FOOTER(p), PACK(cur_size+next_size, 0));
+		PUT(FOOTER(NEXT_BLOCK(p)), PACK(cur_size+next_size, 0));
+		PUT(p, PACK(cur_size+next_size+OVERHEAD, 0));
 	}
 	else if(!prev_alloc && next_alloc)
 	{
 		//merge with previous block.
-		PUT(PREV_BLOCK(p), PACK(cur_size+prev_size+WORD_SIZE*2, 0));
-		PUT(FOOTER(p), PACK(cur_size+prev_size+WORD_SIZE*2, 0));
+		PUT(PREV_BLOCK(p), PACK(cur_size+prev_size+OVERHEAD, 0));
+		PUT(FOOTER(p), PACK(cur_size+prev_size+OVERHEAD, 0));
 	}
 	else
 	{
-		//merge with the previous and next block.	
-		PUT(PREV_BLOCK(p), PACK(cur_size+next_size+prev_size+WORD_SIZE*4, 0));
-		PUT(FOOTER(NEXT_BLOCK(p)), PACK(cur_size+next_size+prev_size+WORD_SIZE*4, 0));
+		//merge with the previous and next block.
+		PUT(PREV_BLOCK(p), PACK(cur_size+next_size+prev_size+OVERHEAD*2, 0));
+		PUT(FOOTER(NEXT_BLOCK(p)), PACK(cur_size+next_size+prev_size+OVERHEAD*2, 0));
 	}
 	
 	return;
@@ -85,19 +88,29 @@ Allocator* allocator_create(size_t init_size)
 
 	return_val_if_fail(thiz!=NULL, NULL);
 
-	thiz->data = calloc(1, init_size+OVERHEAD);
+	//header block + footer block + initial block(init_size),so there are 3 overhead.
+	thiz->data = calloc(1, init_size+OVERHEAD*3);
 	if(thiz->data == NULL)
 	{
 		free(thiz);
 
 		return NULL;
 	}
+	thiz->size = init_size + OVERHEAD * 3;
 
-	//there is only one block initially
+	//only one data block initially with header and footer block.
 	void* p = thiz->data;
 
+	PUT(p, PACK(0, 1));
+	PUT(FOOTER(p), PACK(0, 1));
+
+	p = NEXT_BLOCK(p);
 	PUT(p, PACK(init_size, 0));
 	PUT(FOOTER(p), PACK(init_size, 0));
+
+	p = NEXT_BLOCK(p);
+	PUT(p, PACK(0, 1));
+	PUT(FOOTER(p), PACK(0, 1));
 
 	return thiz;
 }
@@ -116,32 +129,32 @@ void* allocator_alloc(Allocator* thiz, size_t size)
 
 	while(p < thiz->data + thiz->size)
 	{
-		size_t block_size = GET_SIZE(p);
-		int block_available = GET_ALLOC(p);
+		size_t blk_data_size = GET_SIZE(p);
+		int block_alloc = GET_ALLOC(p);
 
-		if(block_size >= alloc_size && block_available)
+		if(blk_data_size >= alloc_size && !block_alloc)
 		{
 			//not enough to split new block.
-			if(block_size <= alloc_size+OVERHEAD)
+			if(blk_data_size <= alloc_size+OVERHEAD)
 			{
-				real_size = block_size;
+				real_size = blk_data_size;
 			}
 
-			PUT(p, PACK(real_size, 0));
-			PUT(GET_FOOTER(p), PACK(real_size, 0));
+			PUT(p, PACK(real_size, 1));
+			PUT(GET_FOOTER(p), PACK(real_size, 1));
 
 			//split the new block.
-			if(real_size < block_size)
+			if(real_size < blk_data_size)
 			{
-				size_t new_block_size = block_size- real_size - OVERHEAD;
+				size_t new_blk_data_size = blk_data_size- real_size - OVERHEAD;
 
 				//split the block into 2 parts.	
 				void* np = NEXT_BLOCK(p);
-				PUT(np, PACK(new_block_size, 0));
-				PUT(GET_FOOTER(np), PACK(new_block_size, 0));
+				PUT(np, PACK(new_blk_data_size, 0));
+				PUT(GET_FOOTER(np), PACK(new_blk_data_size, 0));
 			}
 				
-			return p + 1;
+			return HDRP_TO_DP(p);
 		}
 		
 		p = NEXT_BLOCK(p);
@@ -153,14 +166,26 @@ void* allocator_alloc(Allocator* thiz, size_t size)
 	return allocator_alloc(thiz, alloc_size);
 }
 
-void allocator_free(Allocator* thiz, void* p)
+void allocator_free(Allocator* thiz, void* dp)
 {
-	//modify the alloc bit.
-	//merge the blocks before or after.
-	PUT(p-1, PACK(GET_SIZE(p-1), 0));
+	PUT(DP_TO_HDRP(dp), PACK(GET_SIZE(DP_TO_HDRP(dp)), 0));
 
-	_allocator_try_merge(thiz, p);
+	_allocator_try_merge(thiz, DP_TO_HDRP(dp));
 }
 
+void allocator_destroy(Allocator* thiz)
+{
+	return_if_fail(thiz != NULL);
+
+	free(thiz->data);
+	free(thiz);
+
+	return;
+}
+
+void allocator_dump(Allocator)
+{
+	//TODO.	
+}
 #endif
 
