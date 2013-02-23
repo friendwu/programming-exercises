@@ -97,18 +97,12 @@ static void _allocator_try_merge(Allocator* thiz, void* p)
 
 Allocator* allocator_create(size_t size)
 {
-	Allocator* thiz = (Allocator* )calloc(1, sizeof(Allocator));
+	//header block + footer block + initial block(size),so there are 3 overhead.
+	Allocator* thiz = (Allocator* )calloc(1, sizeof(Allocator) + size + OVERHEAD*3);
 
 	return_val_if_fail(thiz!=NULL, NULL);
 
-	//header block + footer block + initial block(size),so there are 3 overhead.
-	thiz->data = calloc(1, size+OVERHEAD*3);
-	if(thiz->data == NULL)
-	{
-		free(thiz);
-
-		return NULL;
-	}
+	thiz->data = (char* )(thiz) + sizeof(Allocator);
 	thiz->size = size + OVERHEAD * 3;
 
 	//only one data block initially with header and footer block.
@@ -198,7 +192,6 @@ void allocator_destroy(Allocator* thiz)
 {
 	return_if_fail(thiz != NULL);
 
-	free(thiz->data);
 	free(thiz);
 
 	return;
