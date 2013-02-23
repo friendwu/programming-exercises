@@ -1,0 +1,43 @@
+<yodaodict>
+	<return-phrase><![CDATA[bushfire]]></return-phrase>
+	<lang>eng</lang>
+
+	<dictcn-speach><![CDATA[bushfire&type=1]]></dictcn-speach>
+	<speech><![CDATA[bushfire&type=1]]></speech>
+	<custom-translation>
+		<type>ec</type>
+		<translation><content><![CDATA[n. 丛林大火]]></content></translation>
+	</custom-translation>
+
+	<yodao-web-dict>
+		<web-translation same="true">
+		<key><![CDATA[bushfire]]></key>
+		<trans>
+		<value><![CDATA[林火]]>
+		</value>
+		</trans>
+		<trans>
+		<value><![CDATA[林区大火]]>
+		</value>
+		</trans>
+		<trans>
+		<value><![CDATA[丛林火]]>
+		</value>
+		</trans>
+		</web-translation>
+		<web-translation>
+		<key><![CDATA[bushfire war]]></key>
+		<trans>
+		<value><![CDATA[灌木林式战争]]>
+		</value>
+		</trans>
+		</web-translation>
+		<web-translation>
+		<key><![CDATA[Bushfire CRC]]></key>
+		<trans>
+		<value><![CDATA[研究中心]]>
+		</value>
+		</trans>
+		</web-translation>
+	</yodao-web-dict>
+</yodaodict>
